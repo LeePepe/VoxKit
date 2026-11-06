@@ -1,10 +1,10 @@
 ---
 layer: VoxWorkflowWhisperKit
-owns: ["Sources/VoxWorkflowWhisperKit/**"]
-depends_on: ['VoxCore', 'VoxLLM', 'VoxRefine', 'VoxSpeech', 'VoxSpeechWhisperKit', 'VoxWorkflow']
+owns: ["Sources/VoxWorkflowWhisperKit/**", "Tests/CanaryTests/**"]
+depends_on: ['VoxCore', 'VoxSpeech', 'VoxSpeechWhisperKit', 'VoxWorkflow']
 gate:
   build: swift build --target VoxWorkflowWhisperKit
-  test: swift test --filter VoxWorkflowTests
+  test: swift test --filter CanaryTests
 ---
 
 # VoxWorkflowWhisperKit

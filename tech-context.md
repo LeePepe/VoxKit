@@ -35,6 +35,6 @@ support:
 | VoxSpeech | Public VoxSpeech SDK module and its tests | `Sources/VoxSpeech/tech-context.md` | VoxCore |
 | VoxSpeechWhisperKit | Public VoxSpeechWhisperKit SDK module and its tests | `Sources/VoxSpeechWhisperKit/tech-context.md` | VoxCore, VoxSpeech |
 | VoxWorkflow | Public VoxWorkflow SDK module and its tests | `Sources/VoxWorkflow/tech-context.md` | VoxCore, VoxLLM, VoxRefine, VoxSpeech |
-| VoxWorkflowWhisperKit | Public VoxWorkflowWhisperKit SDK module and its tests | `Sources/VoxWorkflowWhisperKit/tech-context.md` | VoxCore, VoxLLM, VoxRefine, VoxSpeech, VoxSpeechWhisperKit, VoxWorkflow |
+| VoxWorkflowWhisperKit | Public VoxWorkflowWhisperKit SDK module and its tests | `Sources/VoxWorkflowWhisperKit/tech-context.md` | VoxCore, VoxSpeech, VoxSpeechWhisperKit, VoxWorkflow |
 
 Tests belong to the layer they exercise. Dependency direction is enforced by Swift imports and redline checks.

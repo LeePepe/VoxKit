@@ -17,7 +17,7 @@ jobs:
     with:
       runs-on: macos-26
       changed-only: true
-      setup-command: brew list gitleaks >/dev/null 2>&1 || brew install gitleaks
+      setup-command: if [ -d /Applications/Xcode_26.2.app ]; then sudo xcode-select -s /Applications/Xcode_26.2.app; fi; brew list gitleaks >/dev/null 2>&1 || brew install gitleaks
       verify-command: scripts/verify --policy
       build-command: swift build
-      test-command: scripts/verify --selected && scripts/verify --ios
+      test-command: VOXKIT_IOS_DESTINATION="platform=iOS Simulator,name=iPhone 17,OS=26.2" scripts/verify --selected && VOXKIT_IOS_DESTINATION="platform=iOS Simulator,name=iPhone 17,OS=26.2" scripts/verify --ios
