@@ -1,0 +1,1 @@
+{"schema":1,"name":"VoxKit","version":"0.1.0","modules":["VoxCore","VoxSpeech","VoxSpeechWhisperKit","VoxRefine","VoxLLM","VoxWorkflow","VoxWorkflowWhisperKit"]}

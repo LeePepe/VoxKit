@@ -1,0 +1,12 @@
+.build/
+.swiftpm/
+.DS_Store
+DerivedData/
+.shared-ci/
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+*.private.*
+*.local.*
+config.private.json
+Tests/Integration/azure.local.json

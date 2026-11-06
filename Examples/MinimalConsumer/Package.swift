@@ -8,11 +8,11 @@ let package = Package(
     dependencies: [.package(path: "../..")],
     targets: [
         .executableTarget(name: "MinimalConsumer", dependencies: [
-            .product(name: "VoxCore", package: "VoxKit"),
-            .product(name: "VoxSpeech", package: "VoxKit"),
-            .product(name: "VoxRefine", package: "VoxKit"),
-            .product(name: "VoxLLM", package: "VoxKit"),
-            .product(name: "VoxWorkflow", package: "VoxKit"),
+            .product(name: "VoxCore", package: "voxkit-tk4-init"),
+            .product(name: "VoxSpeech", package: "voxkit-tk4-init"),
+            .product(name: "VoxRefine", package: "voxkit-tk4-init"),
+            .product(name: "VoxLLM", package: "voxkit-tk4-init"),
+            .product(name: "VoxWorkflow", package: "voxkit-tk4-init"),
         ])
     ],
     swiftLanguageModes: [.v6]

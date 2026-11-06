@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"; cd "$root"
+pin=838e10a059979e6732446cb26edc95d173cc7e3a
+shared_ci="${SHARED_CI:-$root/.shared-ci}"
+if [ ! -d "$shared_ci/.git" ]; then
+  mkdir -p "$shared_ci"; git -C "$shared_ci" init -q
+  git -C "$shared_ci" fetch -q --depth=1 https://github.com/LeePepe/shared-ci.git "$pin"
+  git -C "$shared_ci" checkout -q --detach FETCH_HEAD
+fi
+[ "$(git -C "$shared_ci" rev-parse HEAD)" = "$pin" ] || { echo "[verify] shared-ci pin mismatch" >&2; exit 1; }
+context() { python3 -I -B "$shared_ci/scripts/context/_context.py" "$@"; }
+policy() {
+  context audit
+  python3 -I -B "$shared_ci/scripts/lint/workflows.py" --root .
+  if command -v gitleaks >/dev/null 2>&1; then gitleaks detect --log-opts="--all" --no-banner; elif [ "${VERIFY_MODE:-}" = ci ]; then echo "[verify] gitleaks required in CI" >&2; return 1; fi
+  scripts/redlines/check.sh --self-test
+  scripts/redlines/check.sh
+}
+mode=changed
+layer=""
+case "${1:-}" in
+  --all) mode=all;; --changed|'') mode=changed;; --selected) mode=selected;; --policy) policy; exit;; --ios) scripts/ci/ios-simulator.sh; exit;; --layer) layer="${2:?layer required}"; mode=layer;; *) echo "usage: scripts/verify [--changed|--all|--selected|--policy|--layer Layer|--ios]" >&2; exit 2;;
+esac
+[ "$mode" = layer ] || policy
+if [ "$mode" = all ]; then layers="$(context layers --all)"
+elif [ "$mode" = selected ]; then layers="${CI_SELECTED_LAYERS:-$(context layers --all)}"
+elif [ "$mode" = layer ]; then layers="$layer"
+else
+  base="${VERIFY_BASE:-origin/main}"; changed="$(git diff --name-only "$(git merge-base "$base" HEAD)" HEAD)"
+  [ -n "$changed" ] || { echo "[verify] no changes"; exit 0; }
+  layers="$(printf '%s\n' "$changed" | context layers --stdin)"
+fi
+for l in $layers; do context run "$l" --mode local; done
+if [ "$mode" = all ] && [ "${RUN_IOS:-0}" = 1 ]; then scripts/ci/ios-simulator.sh; fi
+echo "[verify] ok: $layers"
