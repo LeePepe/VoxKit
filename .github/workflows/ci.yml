@@ -1,0 +1,23 @@
+name: ci
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  quality:
+    uses: LeePepe/shared-ci/.github/workflows/quality.yml@838e10a059979e6732446cb26edc95d173cc7e3a
+    with:
+      runs-on: macos-26
+      changed-only: true
+      setup-command: brew list gitleaks >/dev/null 2>&1 || brew install gitleaks
+      verify-command: scripts/verify --policy
+      build-command: swift build
+      test-command: scripts/verify --selected && scripts/verify --ios

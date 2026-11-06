@@ -5,9 +5,10 @@ import json
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[4]
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ROOT = REPO_ROOT
 MAP = Path(__file__).with_name("module-map.json")
-SOURCE = ROOT / "Packages/VoxKit/Sources"
+SOURCE = REPO_ROOT / "Sources" if (REPO_ROOT / "Sources").is_dir() else REPO_ROOT / "Packages/VoxKit/Sources"
 
 
 def code(text: str) -> str:
