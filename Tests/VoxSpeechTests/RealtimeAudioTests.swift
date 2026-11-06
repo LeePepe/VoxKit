@@ -1,10 +1,9 @@
-import TranscriptionKitCombine
 import VoxCore
 import AVFoundation
 import Foundation
 import Synchronization
 import XCTest
-@testable import TranscriptionKit
+@testable import VoxSpeech
 
 final class RealtimeAudioTests: XCTestCase {
     private func audio(rate: Double = 48_000, channels: UInt32 = 2, frames: UInt32 = 1024) -> AVAudioPCMBuffer {
@@ -101,6 +100,6 @@ final class RealtimeAudioTests: XCTestCase {
     }
 
     private func config() throws -> AzureRealtimeTranscriptionConfig {
-        try .init(endpoint: URL(string: "https://example.invalid")!, apiKey: "synthetic", deployment: "live")
+        try .init(endpoint: URL(string: "https://example.invalid")!, apiKey: Credential(rawValue: "synthetic"), deployment: "live")
     }
 }

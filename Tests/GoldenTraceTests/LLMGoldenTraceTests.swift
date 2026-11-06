@@ -1,10 +1,9 @@
-import TranscriptionKitCombine
 import VoxCore
+import VoxLLM
+import VoxRefine
 import Foundation
 import Synchronization
 import XCTest
-@testable import LLMKit
-import TranscriptionKit
 
 final class LLMGoldenTraceTests: XCTestCase {
     func testAnalysisAndMergerGolden() async throws {
@@ -45,7 +44,7 @@ final class LLMGoldenTraceTests: XCTestCase {
             let response = try await service.refine(request)
             trace["response"] = responseTrace(response)
             if routing != "skip" && outcome == "success" { XCTAssertTrue(response.missingAnalysisSteps.isEmpty) }
-            if routing != "skip" && outcome == "singleStepFailure" { XCTAssertEqual(response.missingAnalysisSteps, [.tone]) }
+            if routing != "skip" && outcome == "singleStepFailure" { XCTAssertEqual(response.missingAnalysisSteps, Set([AnalysisStep.tone])) }
         } else {
             var chunks: [String] = []
             for try await chunk in try await service.refineStreaming(request) { chunks.append(chunk) }

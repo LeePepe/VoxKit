@@ -27,7 +27,7 @@ public protocol QuickRecordingReleaseControlling: AnyObject, Sendable {
 
 /// 可注入的录音边界；生产默认仍使用原有 Apple/Whisper 适配器。
 /// callback 由真实识别回调和确定性测试共用，避免测试复制资格判断。
-struct QuickRecordingSessionEffects: Sendable {
+package struct QuickRecordingSessionEffects: Sendable {
     typealias ResultHandler = @Sendable (TranscriptionResult) -> Void
     let start: @Sendable (UUID, Locale, @escaping ResultHandler) async throws -> Void
     let stopCapture: @Sendable () async -> URL?

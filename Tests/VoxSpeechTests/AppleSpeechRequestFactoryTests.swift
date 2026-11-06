@@ -1,8 +1,7 @@
-import TranscriptionKitCombine
 import VoxCore
 import Speech
 import XCTest
-@testable import TranscriptionKit
+@testable import VoxSpeech
 
 final class AppleSpeechRequestFactoryTests: XCTestCase {
     func testRequestEnablesAutomaticPunctuation() {

@@ -1,8 +1,6 @@
-import TranscriptionKitCombine
 import VoxCore
 import CoreFoundation
 import Foundation
-import LokiKit
 import Synchronization
 import XCTest
 
@@ -12,27 +10,12 @@ final class GoldenEvents: Sendable {
     var values: [String] { storage.withLock { $0 } }
 }
 
-final class GoldenLogger: Logger, VoxLogger, Sendable {
-    private let level = Mutex(LogLevel.debug)
+final class GoldenLogger: VoxLogger, Sendable {
     private let events = GoldenEvents()
     private let keys = Mutex<[[String]]>([])
-    var minimumLevel: LogLevel {
-        get { level.withLock { $0 } }
-        set { level.withLock { $0 = newValue } }
-    }
     func log(_ level: VoxLogLevel, _ message: StaticString, fields: [VoxLogField]) {
         let context = Dictionary(fields.map { (String(describing: $0.key), $0.value.text as Any) }, uniquingKeysWith: { _, latest in latest })
-        log(LogLevel.info, String(describing: message), context: context, file: #file, function: #function, line: #line)
-    }
-    var messages: [String] { events.values }
-    var contextKeys: [[String]] { keys.withLock { $0 } }
-    func log(_ level: LogLevel, _ message: @autoclosure () -> String,
-             file: String, function: String, line: Int) {
-        log(level, message(), context: [:], file: file, function: function, line: line)
-    }
-    func log(_ level: LogLevel, _ message: @autoclosure () -> String,
-             context: [String: Any], file: String, function: String, line: Int) {
-        let value = message()
+        let value = String(describing: message)
         let allowed: Set<String> = [
             "Initialized", "Applied LLM analysis settings", "Configured LLM provider", "No audio file",
             "Already transcribing, stopping first", "Recording + Apple Speech started", "Merging Apple Speech + Whisper via LLM",
@@ -47,6 +30,8 @@ final class GoldenLogger: Logger, VoxLogger, Sendable {
             keys.withLock { $0.append(context.keys.filter { allowedKeys.contains($0) }.sorted()) }
         }
     }
+    var messages: [String] { events.values }
+    var contextKeys: [[String]] { keys.withLock { $0 } }
 }
 
 func assertGolden(_ payload: [String: Any], name: String,
@@ -144,4 +129,35 @@ final class GoldenFixtureCodecTests: XCTestCase {
             XCTAssertThrowsError(try GoldenFixtureCodec.decode(data))
         }
     }
+}
+
+final class GoldenSpeechProbe {
+    private let events = GoldenEvents()
+    private let pump: Task<Void, Never>
+    var values: [String] { events.values }
+    func waitFor(_ event: String, count: Int = 1) async {
+        await assertEventually { self.values.filter { $0 == event }.count >= count }
+    }
+    init(_ coordinator: AsyncTestCoordinator) async {
+        var levels = coordinator.core.audioLevels().makeAsyncIterator()
+        var states = coordinator.core.captureStates().makeAsyncIterator()
+        if let level = await levels.next() { events.append("level:\(level)") }
+        else { XCTFail("Source audioLevels must publish its current value") }
+        if let state = await states.next() { events.append("state:\(state)") }
+        else { XCTFail("Source captureStates must publish its current value") }
+        let stream = coordinator.events()
+        pump = Task { [events] in
+            for await event in stream {
+                switch event {
+                case .partial(let result):
+                    let confidence = result.confidence.map { String($0) } ?? "nil"
+                    events.append("live:\(result.type.rawValue):\(result.text):\(confidence)")
+                case .final(let result): events.append("final:\(result.text)")
+                case .level(let value): events.append("level:\(value)")
+                case .state(let value): events.append("state:\(value)")
+                }
+            }
+        }
+    }
+    deinit { pump.cancel() }
 }

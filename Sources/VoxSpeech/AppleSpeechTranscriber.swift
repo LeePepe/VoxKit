@@ -7,20 +7,30 @@ import Synchronization
 /// Apple Speech Framework 转录协调器
 ///
 /// 使用 `MicrophoneRecorder` 采集音频，`SFSpeechRecognizer` 实时识别文字。
-/// Combine 桥接沿用 unchecked Sendable；会话资格及身份由 Mutex 生命周期保护。
-public final class AppleSpeechTranscriber: NSObject, @unchecked Sendable {
+public final class AppleSpeechTranscriber: NSObject, @unchecked Sendable { // Sendable: Apple Speech (SFSpeechRecognizer/SFSpeechAudioBufferRecognitionRequest/SFSpeechRecognitionTask) callback boundary; all mutable state is guarded by stateMutex.
 
     // MARK: - Dependencies
 
     fileprivate let recorder: any AudioBufferSource
     fileprivate let speechRecognizerProvider: any SpeechRecognizing
     fileprivate let speechAuthorizationProvider: any SpeechAuthorizationProviding
-    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
-    private var recognitionTask: (any SpeechRecognitionTasking)?
+    private struct State: @unchecked Sendable { // Sendable: Apple Speech request/task callback references are guarded by stateMutex.
+        var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+        var recognitionTask: (any SpeechRecognitionTasking)?
+    }
+    private let stateMutex = Mutex(State())
+    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest? {
+        get { stateMutex.withLock { $0.recognitionRequest } }
+        set { stateMutex.withLock { $0.recognitionRequest = newValue } }
+    }
+    private var recognitionTask: (any SpeechRecognitionTasking)? {
+        get { stateMutex.withLock { $0.recognitionTask } }
+        set { stateMutex.withLock { $0.recognitionTask = newValue } }
+    }
 
     // MARK: - Publishers
 
-    let sessionRelay = SpeechSessionRelay()
+    package let sessionRelay = SpeechSessionRelay()
     fileprivate let captureStateSubject = AsyncValueRelay<AudioCaptureState>(.idle)
 
     // MARK: - State
@@ -75,7 +85,7 @@ public final class AppleSpeechTranscriber: NSObject, @unchecked Sendable {
 
 extension AppleSpeechTranscriber: SpeechAvailabilityProviding, SessionDriving {
 
-    var finishesRelayOnStopReturn: Bool { false }
+    package var finishesRelayOnStopReturn: Bool { false }
 
     public var isSpeechAvailable: Bool { hasSpeechPermission && speechRecognizerProvider.isAvailable }
     public var providerKind: ASRProviderType { .apple }
@@ -87,8 +97,8 @@ extension AppleSpeechTranscriber: SpeechAvailabilityProviding, SessionDriving {
     public func requestSpeechPermission() async -> Bool { await speechAuthorizationProvider.requestSpeechAuthorization() }
     public func captureStates() -> AsyncStream<AudioCaptureState> { captureStateSubject.stream() }
     public func audioLevels() -> AsyncStream<Float> { recorder.audioLevels() }
-    func captureDeviceStates() -> AsyncStream<AudioCaptureState> { recorder.captureStates() }
-    func interruptCapture() async {
+    package func captureDeviceStates() -> AsyncStream<AudioCaptureState> { recorder.captureStates() }
+    package func interruptCapture() async {
         await stop()
         captureStateSubject.send(.interrupted)
         sessionRelay.send(.state(.interrupted))

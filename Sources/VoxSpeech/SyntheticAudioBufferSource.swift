@@ -14,11 +14,11 @@ public final class SyntheticAudioBufferSource: AudioBufferSource, Sendable {
     public var state: AudioCaptureState { stateSubject.value }
     public var hasPermission: Bool { true }
     public func requestPermission() async -> Bool { true }
-    func start(bufferHandler: ((AVAudioPCMBuffer) -> Void)?) async throws {
+    package func start(bufferHandler: ((AVAudioPCMBuffer) -> Void)?) async throws {
         handler.withLock { $0 = bufferHandler.map(PCMBufferConsumer.init) }
         stateSubject.send(.recording)
     }
-    func startIfAllowed(shouldStart: @escaping @Sendable () -> Bool, bufferHandler: ((AVAudioPCMBuffer) -> Void)?) async throws {
+    package func startIfAllowed(shouldStart: @escaping @Sendable () -> Bool, bufferHandler: ((AVAudioPCMBuffer) -> Void)?) async throws {
         guard shouldStart() else { throw CancellationError() }
         try await start(bufferHandler: bufferHandler)
     }
@@ -31,7 +31,6 @@ public final class SyntheticAudioBufferSource: AudioBufferSource, Sendable {
     }
 }
 
-// Sendable: the immutable consumer is invoked synchronously at the Apple PCM boundary, like an audio tap.
-private struct PCMBufferConsumer: @unchecked Sendable {
+private struct PCMBufferConsumer: @unchecked Sendable { // Sendable: immutable consumer runs synchronously at the Apple PCM boundary.
     let consume: (AVAudioPCMBuffer) -> Void
 }

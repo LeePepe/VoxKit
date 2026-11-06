@@ -1,6 +1,7 @@
 import XCTest
-import LLMKit
+import VoxLLM
 import VoxCore
+import VoxRefine
 
 final class LLMKitTests: XCTestCase {
     func testPlaceholder() {
@@ -34,6 +35,9 @@ final class LLMKitTests: XCTestCase {
     }
 
     func testIntentAndToneAnalysis() async throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("FoundationModels assets unavailable on iOS Simulator")
+        #endif
         let provider = AppleIntelligenceProvider()
         guard provider.isAvailable else {
             throw XCTSkip("Apple Intelligence 不可用，跳过 intent/tone 测试。")

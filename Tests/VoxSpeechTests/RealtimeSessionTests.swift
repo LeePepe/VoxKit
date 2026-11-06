@@ -1,9 +1,8 @@
-import TranscriptionKitCombine
 import VoxCore
 import Foundation
 import Synchronization
 import XCTest
-@testable import TranscriptionKit
+@testable import VoxSpeech
 
 actor FakeRealtimeTransport: RealtimeTranscriptionTransport {
     private var pending: [Data] = []
@@ -52,7 +51,7 @@ actor FakeRealtimeTransport: RealtimeTranscriptionTransport {
 
 final class RealtimeSessionTests: XCTestCase {
     private func config() throws -> AzureRealtimeTranscriptionConfig {
-        try .init(endpoint: URL(string: "https://example.invalid")!, apiKey: "synthetic-key", deployment: "live")
+        try .init(endpoint: URL(string: "https://example.invalid")!, apiKey: Credential(rawValue: "synthetic-key"), deployment: "live")
     }
 
     func testPartialArrivesBeforeFinishAndFinishCommitsOnce() async throws {

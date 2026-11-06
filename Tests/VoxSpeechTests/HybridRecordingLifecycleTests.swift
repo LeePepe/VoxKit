@@ -1,10 +1,9 @@
-import TranscriptionKitCombine
 import VoxCore
 import Foundation
 import AVFoundation
 import Synchronization
 import XCTest
-@testable import TranscriptionKit
+@testable import VoxSpeech
 
 final class HybridRecordingLifecycleTests: XCTestCase {
     func testQuickAppleLatchAcceptsStartingAndRemainsTrueAfterWhitespace() throws {
@@ -25,7 +24,7 @@ final class HybridRecordingLifecycleTests: XCTestCase {
         try lifecycle.prepareQuickRecording()
         let id = try lifecycle.begin(locale: .current)
         let config = try AzureRealtimeTranscriptionConfig(endpoint: URL(string: "https://example.invalid")!,
-                                                          apiKey: "fixture", deployment: "live")
+                                                          apiKey: Credential(rawValue: "fixture"), deployment: "live")
         let pipeline = RealtimeAudioPipeline(session: DefaultRealtimeTranscriptionSession(config: config, onPartial: { _ in }))
         try lifecycle.attach(pipeline, id: id)
         pipeline.append(audio(frames: 4800))
@@ -79,7 +78,7 @@ final class HybridRecordingLifecycleTests: XCTestCase {
         let lifecycle = HybridRecordingLifecycle()
         let id = try lifecycle.begin(locale: .current)
         let config = try AzureRealtimeTranscriptionConfig(endpoint: URL(string: "https://example.invalid")!,
-                                                          apiKey: "fixture", deployment: "live")
+                                                          apiKey: Credential(rawValue: "fixture"), deployment: "live")
         let socket = FakeRealtimeTransport(acknowledge: false)
         let session = DefaultRealtimeTranscriptionSession(config: config, transport: socket,
                                                          timeout: .milliseconds(20), onPartial: { _ in })
@@ -116,7 +115,7 @@ final class HybridRecordingLifecycleTests: XCTestCase {
             let lifecycle = HybridRecordingLifecycle()
             let id = try lifecycle.begin(locale: .current)
             let config = try AzureRealtimeTranscriptionConfig(endpoint: URL(string: "https://example.invalid")!,
-                                                              apiKey: "fixture", deployment: "live")
+                                                              apiKey: Credential(rawValue: "fixture"), deployment: "live")
             let socket = FakeRealtimeTransport(acknowledge: false)
             let session = DefaultRealtimeTranscriptionSession(config: config, transport: socket,
                                                              timeout: .milliseconds(20), onPartial: { _ in })
@@ -149,7 +148,7 @@ final class HybridRecordingLifecycleTests: XCTestCase {
             let lifecycle = HybridRecordingLifecycle()
             let id = try lifecycle.begin(locale: .current)
             let config = try AzureRealtimeTranscriptionConfig(endpoint: URL(string: "https://example.invalid")!,
-                                                              apiKey: "fixture", deployment: "live")
+                                                              apiKey: Credential(rawValue: "fixture"), deployment: "live")
             let pipeline = RealtimeAudioPipeline(session: DefaultRealtimeTranscriptionSession(config: config, onPartial: { _ in }))
             try lifecycle.attach(pipeline, id: id)
             for _ in 0..<2 { pipeline.append(audio(frames: UInt32(rate / 20), rate: rate)) }

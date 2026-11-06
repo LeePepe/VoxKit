@@ -24,7 +24,7 @@ public final class DefaultSelectableTranscriptionCoordinator: SessionDriving, Qu
     private let stateLock = Mutex(State())
     private let factory: any SpeechSessionFactory
     private let permissions: any SpeechSessionSource
-    let sessionRelay = SpeechSessionRelay()
+    package let sessionRelay = SpeechSessionRelay()
     private let levels = AsyncValueRelay<Float>(0)
     private let capture = AsyncValueRelay<AudioCaptureState>(.idle)
 

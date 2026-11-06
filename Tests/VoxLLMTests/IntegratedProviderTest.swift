@@ -1,13 +1,16 @@
 import VoxCore
+import VoxRefine
 import XCTest
-@testable import LLMKit
-import LokiKit
+@testable import VoxLLM
 
 /// 测试集成后的 AppleIntelligenceProvider（使用文本完成方法）
 final class IntegratedProviderTest: XCTestCase {
 
     /// 测试集成后的意图和语气分析
     func testIntegratedAnalysis() async throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("FoundationModels assets unavailable on iOS Simulator")
+        #endif
         let provider = AppleIntelligenceProvider(
             logger: NoopVoxLogger()
         )
@@ -74,6 +77,9 @@ final class IntegratedProviderTest: XCTestCase {
 
     /// 测试完整的 refine 流程（包含并行分析）
     func testCompleteRefinementPipeline() async throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("FoundationModels assets unavailable on iOS Simulator")
+        #endif
         let provider = AppleIntelligenceProvider(
             logger: NoopVoxLogger()
         )

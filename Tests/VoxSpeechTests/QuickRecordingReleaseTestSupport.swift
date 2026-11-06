@@ -1,8 +1,7 @@
-import TranscriptionKitCombine
 import VoxCore
 import Foundation
 import Synchronization
-@testable import TranscriptionKit
+@testable import VoxSpeech
 
 actor QuickRecordingEffectGate {
     private var continuation: CheckedContinuation<Void, Never>?
@@ -78,10 +77,10 @@ final class QuickRecordingEffectProbe: Sendable {
 enum QuickRecordingTestProvider: CaseIterable {
     case apple, batch, realtime
 
-    func make(_ probe: QuickRecordingEffectProbe, merger: (any TranscriptionMerger)? = nil) -> any TranscriptionCoordinator & QuickRecordingReleaseControlling {
-        if self == .apple { return CombineTranscriptionCoordinator.wrap(AppleSpeechTranscriber(effects: probe.effects)) }
-        let config = AzureWhisperConfig(endpoint: URL(string: "https://example.invalid/transcriptions")!, apiKey: "fixture")
-        return CombineTranscriptionCoordinator.wrap(HybridWhisperTranscriber(whisperConfig: config, effects: probe.effects, merger: merger))
+    func make(_ probe: QuickRecordingEffectProbe, merger: (any TranscriptionMerger)? = nil) -> AsyncTestCoordinator {
+        if self == .apple { return AsyncTestCoordinator.wrap(AppleSpeechTranscriber(effects: probe.effects)) }
+        let config = AzureWhisperConfig(endpoint: URL(string: "https://example.invalid/transcriptions")!, apiKey: Credential(rawValue: "fixture"))
+        return AsyncTestCoordinator.wrap(HybridWhisperTranscriber(whisperConfig: config, effects: probe.effects, merger: merger))
     }
 }
 

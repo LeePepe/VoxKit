@@ -3,13 +3,14 @@ import AVFoundation
 import Foundation
 import Speech
 
-protocol SpeechAuthorizationProviding: Sendable {
+package protocol SpeechAuthorizationProviding: Sendable {
     func requestSpeechAuthorization() async -> Bool
     var speechAuthorizationStatus: SFSpeechRecognizerAuthorizationStatus { get }
 }
 
-struct SystemSpeechAuthorizationProvider: SpeechAuthorizationProviding, Sendable {
-    func requestSpeechAuthorization() async -> Bool {
+package struct SystemSpeechAuthorizationProvider: SpeechAuthorizationProviding, Sendable {
+    package init() {}
+    package func requestSpeechAuthorization() async -> Bool {
         await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { status in
                 continuation.resume(returning: status == .authorized)
@@ -17,18 +18,18 @@ struct SystemSpeechAuthorizationProvider: SpeechAuthorizationProviding, Sendable
         }
     }
 
-    var speechAuthorizationStatus: SFSpeechRecognizerAuthorizationStatus {
+    package var speechAuthorizationStatus: SFSpeechRecognizerAuthorizationStatus {
         SFSpeechRecognizer.authorizationStatus()
     }
 }
 
-protocol MicrophoneAuthorizationProviding: Sendable {
+package protocol MicrophoneAuthorizationProviding: Sendable {
     func requestMicrophoneAccess() async -> Bool
     var hasMicrophoneAccess: Bool { get }
 }
 
-struct SystemMicrophoneAuthorizationProvider: MicrophoneAuthorizationProviding, Sendable {
-    func requestMicrophoneAccess() async -> Bool {
+package struct SystemMicrophoneAuthorizationProvider: MicrophoneAuthorizationProviding, Sendable {
+    package func requestMicrophoneAccess() async -> Bool {
         #if os(iOS)
         await AVAudioApplication.requestRecordPermission()
         #else
@@ -36,7 +37,7 @@ struct SystemMicrophoneAuthorizationProvider: MicrophoneAuthorizationProviding, 
         #endif
     }
 
-    var hasMicrophoneAccess: Bool {
+    package var hasMicrophoneAccess: Bool {
         #if os(iOS)
         AVAudioApplication.shared.recordPermission == .granted
         #else
@@ -45,7 +46,7 @@ struct SystemMicrophoneAuthorizationProvider: MicrophoneAuthorizationProviding, 
     }
 }
 
-protocol AudioBufferSource: AnyObject, Sendable {
+package protocol AudioBufferSource: AnyObject, Sendable {
     func audioLevels() -> AsyncStream<Float>
     func captureStates() -> AsyncStream<AudioCaptureState>
     var state: AudioCaptureState { get }
@@ -58,13 +59,13 @@ protocol AudioBufferSource: AnyObject, Sendable {
     func stop() -> URL?
 }
 
-struct RecognitionUpdate: Sendable {
-    let text: String?
-    let isFinal: Bool
-    let confidence: Float?
-    let error: (any Error)?
+package struct RecognitionUpdate: Sendable {
+    package let text: String?
+    package let isFinal: Bool
+    package let confidence: Float?
+    package let error: (any Error)?
 
-    init(text: String?, isFinal: Bool, confidence: Float? = nil, error: (any Error)? = nil) {
+    package init(text: String?, isFinal: Bool, confidence: Float? = nil, error: (any Error)? = nil) {
         self.text = text
         self.isFinal = isFinal
         self.confidence = confidence
@@ -72,37 +73,35 @@ struct RecognitionUpdate: Sendable {
     }
 }
 
-protocol SpeechRecognitionTasking: AnyObject, Sendable {
+package protocol SpeechRecognitionTasking: AnyObject, Sendable {
     func finish()
     func cancel()
 }
 
-protocol SpeechRecognizing: AnyObject, Sendable {
+package protocol SpeechRecognizing: AnyObject, Sendable {
     var isAvailable: Bool { get }
     func isAvailable(for locale: Locale) -> Bool
     func recognitionTask(locale: Locale, request: SFSpeechAudioBufferRecognitionRequest,
-                         handler: @escaping @Sendable (RecognitionUpdate) -> Void) throws -> any SpeechRecognitionTasking
+                        handler: @escaping @Sendable (RecognitionUpdate) -> Void) throws -> any SpeechRecognitionTasking
 }
 
-// Sendable: Apple Speech task cancellation/finish are thread-safe boundary operations.
-final class SystemSpeechRecognitionTask: SpeechRecognitionTasking, @unchecked Sendable {
+package final class SystemSpeechRecognitionTask: SpeechRecognitionTasking, @unchecked Sendable { // Sendable: Apple Speech task finish/cancel are thread-safe.
     private let task: SFSpeechRecognitionTask
-    init(_ task: SFSpeechRecognitionTask) { self.task = task }
-    func finish() { task.finish() }
-    func cancel() { task.cancel() }
+    package init(_ task: SFSpeechRecognitionTask) { self.task = task }
+    package func finish() { task.finish() }
+    package func cancel() { task.cancel() }
 }
 
-// Sendable: the immutable Apple recognizer is used only through framework callback APIs.
-final class SystemSpeechRecognizer: SpeechRecognizing, @unchecked Sendable {
+package final class SystemSpeechRecognizer: SpeechRecognizing, @unchecked Sendable { // Sendable: immutable Apple recognizer is used only via framework callbacks.
     private let recognizer: SFSpeechRecognizer?
-    init(locale: Locale) { recognizer = SFSpeechRecognizer(locale: locale) }
-    var isAvailable: Bool { recognizer?.isAvailable ?? false }
-    func isAvailable(for locale: Locale) -> Bool {
+    package init(locale: Locale) { recognizer = SFSpeechRecognizer(locale: locale) }
+    package var isAvailable: Bool { recognizer?.isAvailable ?? false }
+    package func isAvailable(for locale: Locale) -> Bool {
         SFSpeechRecognizer(locale: locale)?.isAvailable ?? false
     }
 
-    func recognitionTask(locale: Locale, request: SFSpeechAudioBufferRecognitionRequest,
-                         handler: @escaping @Sendable (RecognitionUpdate) -> Void) throws -> any SpeechRecognitionTasking {
+    package func recognitionTask(locale: Locale, request: SFSpeechAudioBufferRecognitionRequest,
+                                 handler: @escaping @Sendable (RecognitionUpdate) -> Void) throws -> any SpeechRecognitionTasking {
         let recognizer = recognizer?.locale.identifier == locale.identifier ? recognizer : SFSpeechRecognizer(locale: locale)
         guard let recognizer else { throw NSError(domain: "SpeechRecognizer", code: -1) }
         let task = recognizer.recognitionTask(with: request) { result, error in
@@ -118,13 +117,13 @@ final class SystemSpeechRecognizer: SpeechRecognizing, @unchecked Sendable {
     }
 }
 
-protocol BatchTranscribing: Sendable {
+package protocol BatchTranscribing: Sendable {
     func transcribe(fileURL: URL, language: Locale) async throws -> String
 }
 
 extension WhisperEngine: BatchTranscribing {}
 
-protocol RealtimePipelining: Sendable {
+package protocol RealtimePipelining: Sendable {
     var hasMinimumAudio: Bool { get }
     func start(language: Locale) async
     func append(_ buffer: AVAudioPCMBuffer)
@@ -166,16 +165,17 @@ struct RealtimePipelineAdapter: RealtimePipelining, Sendable {
     }
 }
 
-protocol RealtimeSessionMaking: Sendable {
+package protocol RealtimeSessionMaking: Sendable {
     func makePipeline(config: AzureRealtimeTranscriptionConfig,
                       onPartial: @escaping @Sendable (String) -> Void,
                       onFallback: @escaping @Sendable () -> Void) -> any RealtimePipelining
 }
 
-struct DefaultRealtimeSessionMaker: RealtimeSessionMaking, Sendable {
-    func makePipeline(config: AzureRealtimeTranscriptionConfig,
-                      onPartial: @escaping @Sendable (String) -> Void,
-                      onFallback: @escaping @Sendable () -> Void) -> any RealtimePipelining {
+package struct DefaultRealtimeSessionMaker: RealtimeSessionMaking, Sendable {
+    package init() {}
+    package func makePipeline(config: AzureRealtimeTranscriptionConfig,
+                              onPartial: @escaping @Sendable (String) -> Void,
+                              onFallback: @escaping @Sendable () -> Void) -> any RealtimePipelining {
         let session = DefaultRealtimeTranscriptionSession(config: config, onPartial: onPartial)
         return RealtimePipelineAdapter(pipeline: RealtimeAudioPipeline(session: session, onFailure: onFallback), session: session)
     }

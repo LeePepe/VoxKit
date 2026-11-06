@@ -1,6 +1,6 @@
 import VoxCore
 import XCTest
-@testable import LLMKit
+@testable import VoxLLM
 
 final class AppleIntelligenceLocaleResolverTests: XCTestCase {
     func testResolveKeepsRequestedLocaleWhenSupportedByMinimalIdentifier() {

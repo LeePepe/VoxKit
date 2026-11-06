@@ -1,7 +1,8 @@
 import VoxCore
+import VoxRefine
 import XCTest
 import FoundationModels
-@testable import LLMKit
+@testable import VoxLLM
 
 /// 测试 Apple Intelligence Guided Generation 的性能问题
 ///

@@ -1,8 +1,8 @@
-import TranscriptionKitCombine
 import VoxCore
+@testable import VoxSpeech
+@testable import VoxSpeechWhisperKit
 import Foundation
 import XCTest
-@testable import TranscriptionKit
 
 final class SpeechGoldenTraceTests: XCTestCase {
     @MainActor func testAllSpeechAdaptersUseInjectedAuthorizationAndAvailability() async throws {
@@ -14,19 +14,19 @@ final class SpeechGoldenTraceTests: XCTestCase {
                 let recognizer = GoldenRecognizer(calls: calls, available: available)
                 let authorization = GoldenSpeechAuthorization(allowed: allowed, calls: calls)
                 let engine = GoldenLocalEngine(calls: calls)
-                let transcribers: [any TranscriptionCoordinator] = [
-                    CombineTranscriptionCoordinator.wrap(AppleSpeechTranscriber(recorder: recorder, speechRecognizer: recognizer,
+                let transcribers: [AsyncTestCoordinator] = [
+                    AsyncTestCoordinator.wrap(AppleSpeechTranscriber(recorder: recorder, speechRecognizer: recognizer,
                                            speechAuthorizationProvider: authorization, logger: GoldenLogger(), storageLocations: testStorageLocations)),
-                    CombineTranscriptionCoordinator.wrap(HybridWhisperTranscriber(recorder: recorder, speechRecognizer: recognizer,
+                    AsyncTestCoordinator.wrap(HybridWhisperTranscriber(recorder: recorder, speechRecognizer: recognizer,
                                               speechAuthorizationProvider: authorization, whisperEngine: GoldenBatch(calls: calls),
                                               realtimeSessionMaker: GoldenRealtime(calls: calls), logger: GoldenLogger(), storageLocations: testStorageLocations)),
-                    CombineTranscriptionCoordinator.wrap(HybridLocalWhisperTranscriber(recorder: recorder, speechRecognizer: recognizer,
+                    AsyncTestCoordinator.wrap(HybridLocalWhisperTranscriber(recorder: recorder, speechRecognizer: recognizer,
                                                    speechAuthorizationProvider: authorization, batchTranscriber: GoldenBatch(calls: calls),
                                                    whisperEngine: engine, config: .init(preloadOnStart: false), logger: GoldenLogger(), storageLocations: testStorageLocations))
                 ]
                 for transcriber in transcribers {
-                    let permission = await transcriber.speechRecognitionService.requestPermission()
-                    let availability = await transcriber.speechRecognitionService.checkAvailability()
+                    let permission = await transcriber.core.requestSpeechPermission()
+                    let availability = transcriber.core.hasSpeechPermission && (transcriber.core as? any SpeechAvailabilityProviding)?.isSpeechAvailable == true
                     XCTAssertEqual(permission, allowed)
                     XCTAssertEqual(availability, allowed && available)
                 }
@@ -65,12 +65,12 @@ final class SpeechGoldenTraceTests: XCTestCase {
         let recognizer = GoldenRecognizer(calls: calls, available: scenario != "recognizerUnavailable",
                                          startupFails: scenario == "recognizerThrows")
         let logger = GoldenLogger()
-        let transcriber = CombineTranscriptionCoordinator.wrap(AppleSpeechTranscriber(recorder: recorder, speechRecognizer: recognizer,
+        let transcriber = AsyncTestCoordinator.wrap(AppleSpeechTranscriber(recorder: recorder, speechRecognizer: recognizer,
                                                 speechAuthorizationProvider: GoldenSpeechAuthorization(allowed: scenario != "speechAuthDenied", calls: calls),
                                                 logger: logger, storageLocations: testStorageLocations))
-        let probe = GoldenSpeechProbe(transcriber)
-        let permission = await transcriber.speechRecognitionService.requestPermission()
-        let available = await transcriber.speechRecognitionService.checkAvailability()
+        let probe = await GoldenSpeechProbe(transcriber)
+        let permission = await transcriber.core.requestSpeechPermission()
+        let available = transcriber.core.hasSpeechPermission && (transcriber.core as? any SpeechAvailabilityProviding)?.isSpeechAvailable == true
         XCTAssertEqual(permission, scenario != "speechAuthDenied")
         XCTAssertEqual(available, scenario != "speechAuthDenied" && scenario != "recognizerUnavailable")
         var errorCode: Int?
@@ -83,12 +83,12 @@ final class SpeechGoldenTraceTests: XCTestCase {
             await probe.waitFor("level:0.25")
             recognizer.emit("synthetic partial")
             await probe.waitFor("live:partial:synthetic partial:nil")
-            transcriber.pause()
+            await transcriber.pause()
             await probe.waitFor("state:paused")
-            XCTAssertEqual(transcriber.audioCaptureService.state, .paused)
-            transcriber.resume()
+            XCTAssertEqual(transcriber.captureState, .paused)
+            await transcriber.resume()
             await probe.waitFor("state:recording", count: 2)
-            XCTAssertEqual(transcriber.audioCaptureService.state, .recording)
+            XCTAssertEqual(transcriber.captureState, .recording)
             recognizer.emit("synthetic final", final: true)
             await probe.waitFor("final:synthetic final")
             await transcriber.stop()
@@ -112,15 +112,15 @@ final class SpeechGoldenTraceTests: XCTestCase {
         let pipeline = GoldenRealtime(calls: calls, minimumAudio: !["silenceSkip", "quickDiscard"].contains(scenario),
                                       fails: scenario == "realtimeFallback")
         let config = try AzureRealtimeTranscriptionConfig(endpoint: XCTUnwrap(URL(string: "https://example.invalid")),
-                                                          apiKey: "fixture-key", deployment: "example-live")
+                                                          apiKey: Credential(rawValue: "fixture-key"), deployment: "example-live")
         let logger = GoldenLogger()
         let realtimeEnabled = ["realtimeSuccess", "realtimeFallback", "silenceSkip", "quickDiscard"].contains(scenario)
-        let transcriber = CombineTranscriptionCoordinator.wrap(HybridWhisperTranscriber(recorder: recorder, speechRecognizer: recognizer,
+        let transcriber = AsyncTestCoordinator.wrap(HybridWhisperTranscriber(recorder: recorder, speechRecognizer: recognizer,
                                                    speechAuthorizationProvider: GoldenSpeechAuthorization(allowed: true, calls: calls),
                                                    whisperEngine: GoldenBatch(calls: calls), realtimeSessionMaker: pipeline,
                                                    realtimeConfig: realtimeEnabled ? config : nil, logger: logger,
                                                    merger: scenario == "withMerger" ? GoldenMerger(calls: calls) : nil, storageLocations: testStorageLocations))
-        let probe = GoldenSpeechProbe(transcriber)
+        let probe = await GoldenSpeechProbe(transcriber)
         if scenario == "quickDiscard" { try transcriber.prepareQuickRecording() }
         try await transcriber.start(language: Locale(identifier: "zh-Hans"))
         await probe.waitFor("state:recording")
@@ -166,11 +166,11 @@ final class SpeechGoldenTraceTests: XCTestCase {
         let mainCalls = GoldenEvents(); let quickCalls = GoldenEvents()
         let mainRecorder = try GoldenAudioSource(calls: mainCalls); let quickRecorder = try GoldenAudioSource(calls: quickCalls)
         let mainRecognizer = GoldenRecognizer(calls: mainCalls); let quickRecognizer = GoldenRecognizer(calls: quickCalls)
-        let main = CombineTranscriptionCoordinator.wrap(AppleSpeechTranscriber(recorder: mainRecorder, speechRecognizer: mainRecognizer,
+        let main = AsyncTestCoordinator.wrap(AppleSpeechTranscriber(recorder: mainRecorder, speechRecognizer: mainRecognizer,
                                           speechAuthorizationProvider: GoldenSpeechAuthorization(allowed: true, calls: mainCalls), logger: GoldenLogger(), storageLocations: testStorageLocations))
-        let quick = CombineTranscriptionCoordinator.wrap(AppleSpeechTranscriber(recorder: quickRecorder, speechRecognizer: quickRecognizer,
+        let quick = AsyncTestCoordinator.wrap(AppleSpeechTranscriber(recorder: quickRecorder, speechRecognizer: quickRecognizer,
                                            speechAuthorizationProvider: GoldenSpeechAuthorization(allowed: true, calls: quickCalls), logger: GoldenLogger(), storageLocations: testStorageLocations))
-        let mainProbe = GoldenSpeechProbe(main); let quickProbe = GoldenSpeechProbe(quick)
+        let mainProbe = await GoldenSpeechProbe(main); let quickProbe = await GoldenSpeechProbe(quick)
         try quick.prepareQuickRecording()
         try await main.start(language: Locale(identifier: "en"))
         try await quick.start(language: Locale(identifier: "zh-Hans"))

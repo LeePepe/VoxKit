@@ -1,16 +1,14 @@
-import TranscriptionKitCombine
 import VoxCore
-import Combine
 import Foundation
 import Synchronization
 import XCTest
-@testable import TranscriptionKit
+@testable import VoxSpeech
 
 final class QuickRecordingReleaseControlTests: XCTestCase {
     func testCloudPreviewDoesNotAllowQuickFinalizationButNormalStopStillFinalizes() async throws {
         for provider in [QuickRecordingTestProvider.batch, .realtime] {
             let probe = QuickRecordingEffectProbe(realtime: provider == .realtime)
-            let source = try XCTUnwrap((provider.make(probe) as? CombineTranscriptionCoordinator)?.core as? HybridWhisperTranscriber)
+            let source = try XCTUnwrap(provider.make(probe).core as? HybridWhisperTranscriber)
             try source.prepareQuickRecording()
             try await source.start(language: .current)
             source.receiveCloudText("synthetic cloud", id: probe.sessionID, locale: .current)
@@ -28,9 +26,9 @@ final class QuickRecordingReleaseControlTests: XCTestCase {
 
     func testOrdinaryAppleStopRetainsDelayedFinal() async throws {
         let probe = QuickRecordingEffectProbe()
-        let source = CombineTranscriptionCoordinator.wrap(AppleSpeechTranscriber(effects: probe.effects))
+        let source = AsyncTestCoordinator.wrap(AppleSpeechTranscriber(effects: probe.effects))
         let seen = Mutex(0)
-        let subscription = source.finalResultPublisher.sink(receiveCompletion: { _ in }, receiveValue: { _ in
+        let subscription = source.observeFinals({ _ in
             seen.withLock { $0 += 1 }
         })
         defer { subscription.cancel() }
@@ -49,7 +47,7 @@ final class QuickRecordingReleaseControlTests: XCTestCase {
             let merger = QuickRecordingCountingMerger()
             let source = provider.make(probe, merger: merger)
             let finals = Mutex(0)
-            let subscription = source.finalResultPublisher.sink(receiveCompletion: { _ in }, receiveValue: { _ in
+            let subscription = source.observeFinals({ _ in
                 finals.withLock { $0 += 1 }
             })
             try source.prepareQuickRecording()
@@ -183,7 +181,7 @@ final class QuickRecordingReleaseControlTests: XCTestCase {
     func testProductionRealtimeCancellationAwaitsTransportCloseBeforeReturning() async throws {
         let transport = QuickRecordingClosingTransport()
         let config = try AzureRealtimeTranscriptionConfig(endpoint: URL(string: "https://example.invalid")!,
-                                                          apiKey: "fixture", deployment: "live")
+                                                          apiKey: Credential(rawValue: "fixture"), deployment: "live")
         let session = DefaultRealtimeTranscriptionSession(config: config, transport: transport, onPartial: { _ in })
         let pipeline = RealtimeAudioPipeline(session: session)
         let done = Mutex(false)

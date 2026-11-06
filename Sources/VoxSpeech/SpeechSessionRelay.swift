@@ -8,7 +8,8 @@ package final class SpeechSessionRelay: Sendable {
         var continuation: AsyncThrowingStream<TranscriptionEvent, Error>.Continuation?
     }
     private let state = Mutex(State())
-    func open() -> (UUID, AsyncThrowingStream<TranscriptionEvent, Error>) {
+    package init() {}
+    package func open() -> (UUID, AsyncThrowingStream<TranscriptionEvent, Error>) {
         let pair = AsyncThrowingStream<TranscriptionEvent, Error>.makeStream()
         let id = UUID()
         let old = state.withLock { state in
@@ -19,13 +20,13 @@ package final class SpeechSessionRelay: Sendable {
         old?.finish()
         return (id, pair.stream)
     }
-    func isCurrent(_ id: UUID) -> Bool { state.withLock { $0.id == id && $0.continuation != nil } }
-    func send(_ event: TranscriptionEvent) { state.withLock { $0.continuation }?.yield(event) }
-    func send(_ event: TranscriptionEvent, id: UUID) {
+    package func isCurrent(_ id: UUID) -> Bool { state.withLock { $0.id == id && $0.continuation != nil } }
+    package func send(_ event: TranscriptionEvent) { state.withLock { $0.continuation }?.yield(event) }
+    package func send(_ event: TranscriptionEvent, id: UUID) {
         let current = state.withLock { state in state.id == id ? state.continuation : nil }
         current?.yield(event)
     }
-    func finish(id: UUID? = nil, throwing error: (any Error)? = nil) {
+    package func finish(id: UUID? = nil, throwing error: (any Error)? = nil) {
         let current = state.withLock { state -> AsyncThrowingStream<TranscriptionEvent, Error>.Continuation? in
             guard id == nil || state.id == id else { return nil }
             defer { state.continuation = nil }
@@ -35,7 +36,7 @@ package final class SpeechSessionRelay: Sendable {
     }
 }
 
-protocol SessionDriving: SpeechSessionSource {
+package protocol SessionDriving: SpeechSessionSource {
     var sessionRelay: SpeechSessionRelay { get }
     var finishesRelayOnStopReturn: Bool { get }
     func start(language: Locale) async throws
@@ -47,9 +48,9 @@ protocol SessionDriving: SpeechSessionSource {
 }
 
 extension SessionDriving {
-    var finishesRelayOnStopReturn: Bool { false }
-    func captureDeviceStates() -> AsyncStream<AudioCaptureState> { captureStates() }
-    func interruptCapture() async {
+    package var finishesRelayOnStopReturn: Bool { false }
+    package func captureDeviceStates() -> AsyncStream<AudioCaptureState> { captureStates() }
+    package func interruptCapture() async {
         await stop()
         sessionRelay.send(.state(.interrupted))
     }

@@ -1,11 +1,10 @@
-import TranscriptionKitCombine
 import VoxCore
+import VoxSpeech
+@testable import VoxSpeechWhisperKit
 import AVFoundation
-import Combine
 import Foundation
 import Speech
 import Synchronization
-@testable import TranscriptionKit
 
 struct GoldenSpeechAuthorization: SpeechAuthorizationProviding {
     let allowed: Bool
@@ -14,7 +13,6 @@ struct GoldenSpeechAuthorization: SpeechAuthorizationProviding {
     func requestSpeechAuthorization() async -> Bool { calls.append("speech.permission:\(allowed)"); return allowed }
 }
 
-/// Combine 桥接；配置不可变，事件由线程安全的 subject 和 Mutex 收集。
 final class GoldenAudioSource: AudioBufferSource, @unchecked Sendable {
     private let levels = AsyncValueRelay<Float>(0)
     private let states = AsyncValueRelay<AudioCaptureState>(.idle)
@@ -24,7 +22,7 @@ final class GoldenAudioSource: AudioBufferSource, @unchecked Sendable {
     init(permission: Bool = true, calls: GoldenEvents) throws {
         self.permission = permission; self.calls = calls
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("VoxPocket/TemporaryAudio", isDirectory: true)
+            .appendingPathComponent("example-golden-audio", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         file = directory.appendingPathComponent("golden-\(UUID().uuidString).wav")
         try Data().write(to: file)
@@ -136,25 +134,5 @@ struct GoldenLocalEngine: LocalWhisperEngine {
     func transcribeAudioFile(atPath path: String, languageCode: String?) async throws -> String? {
         calls.append("local.transcribe:\(languageCode ?? "nil")")
         return "synthetic local"
-    }
-}
-
-final class GoldenSpeechProbe {
-    private let events = GoldenEvents()
-    private var subscriptions: [AnyCancellable] = []
-    var values: [String] { events.values }
-    func waitFor(_ event: String, count: Int = 1) async {
-        await assertEventually { self.values.filter { $0 == event }.count >= count }
-    }
-    init(_ coordinator: any TranscriptionCoordinator) {
-        subscriptions.append(coordinator.liveResultPublisher.sink(receiveCompletion: { _ in }, receiveValue: { [events] result in
-            let confidence = result.confidence.map { String($0) } ?? "nil"
-            events.append("live:\(result.type.rawValue):\(result.text):\(confidence)")
-        }))
-        subscriptions.append(coordinator.finalResultPublisher.sink(receiveCompletion: { _ in }, receiveValue: { [events] result in
-            events.append("final:\(result.text)")
-        }))
-        subscriptions.append(coordinator.audioLevelPublisher.sink { [events] in events.append("level:\($0)") })
-        subscriptions.append(coordinator.audioCaptureService.statePublisher.sink { [events] in events.append("state:\($0)") })
     }
 }

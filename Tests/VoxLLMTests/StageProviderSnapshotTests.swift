@@ -1,9 +1,9 @@
 import VoxCore
+import VoxRefine
 import Foundation
 import Synchronization
 import XCTest
-import LokiKit
-@testable import LLMKit
+@testable import VoxLLM
 
 final class StageProviderSnapshotTests: XCTestCase {
     func testMergerNeverLogsInputPromptOrOutputContent() async throws {
@@ -94,26 +94,13 @@ private final class FakeStageProvider: LLMProvider, Sendable {
     func cancel() {}
 }
 
-private final class FakeStageLogger: VoxLogger, LokiKit.Logger, Sendable {
+private final class FakeStageLogger: VoxLogger, Sendable {
     func log(_ level: VoxLogLevel, _ message: StaticString, fields: [VoxLogField]) {
         let output = String(describing: message) + fields.map { $0.value.text }.joined(separator: " ")
         messages.withLock { $0.append(output) }
     }
 
     let messages = Mutex<[String]>([])
-    private let level = Mutex<LogLevel>(.debug)
-    var minimumLevel: LogLevel {
-        get { level.withLock { $0 } }
-        set { level.withLock { $0 = newValue } }
-    }
-    func log(_ level: LogLevel, _ message: @autoclosure () -> String, file: String, function: String, line: Int) {
-        let text = message()
-        messages.withLock { $0.append(text) }
-    }
-    func log(_ level: LogLevel, _ message: @autoclosure () -> String, context: [String: Any], file: String, function: String, line: Int) {
-        let text = message() + String(describing: context)
-        messages.withLock { $0.append(text) }
-    }
 }
 
 private actor FakeAnalysisGate {

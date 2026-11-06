@@ -1,10 +1,8 @@
-import TranscriptionKitCombine
 import VoxCore
-import Combine
 import Foundation
 import Synchronization
 import XCTest
-@testable import TranscriptionKit
+@testable import VoxSpeech
 
 final class SelectableTranscriptionTests: XCTestCase {
     func testQuickReleaseBeforeRouterStartNeverRunsSelection() async throws {
@@ -29,7 +27,7 @@ final class SelectableTranscriptionTests: XCTestCase {
         let source = QuickRecordingTestProvider.apple.make(probe)
         let router = makeSelectableCoordinator(permissionCoordinator: source) { source }
         let finals = Mutex(0)
-        let subscription = router.finalResultPublisher.sink(receiveCompletion: { _ in }, receiveValue: { _ in
+        let subscription = router.observeFinals({ _ in
             finals.withLock { $0 += 1 }
         })
         defer { subscription.cancel() }
@@ -75,7 +73,7 @@ final class SelectableTranscriptionTests: XCTestCase {
             let source = provider.make(probe)
             let router = makeSelectableCoordinator(permissionCoordinator: source) { source }
             let finals = Mutex(0)
-            let subscription = router.finalResultPublisher.sink(receiveCompletion: { _ in }, receiveValue: { _ in
+            let subscription = router.observeFinals({ _ in
                 finals.withLock { $0 += 1 }
             })
             try router.prepareQuickRecording()
@@ -142,7 +140,7 @@ final class SelectableTranscriptionTests: XCTestCase {
         for provider in QuickRecordingTestProvider.allCases {
             let failed = QuickRecordingEffectProbe(startFails: true)
             let failedSource = provider.make(failed)
-            let selection = Mutex<any TranscriptionCoordinator>(failedSource)
+            let selection = Mutex<any SpeechSessionSource>(failedSource)
             let router = makeSelectableCoordinator(permissionCoordinator: failedSource) {
                 selection.withLock { $0 }
             }
@@ -218,7 +216,7 @@ final class SelectableTranscriptionTests: XCTestCase {
         let fake = FakeSelectableTranscriber()
         let router = makeSelectableCoordinator(permissionCoordinator: fake) { fake }
         let seen = Mutex<[String]>([])
-        let subscription = router.finalResultPublisher.sink(receiveCompletion: { _ in }, receiveValue: { value in
+        let subscription = router.observeFinals({ value in
             seen.withLock { $0.append(value.text) }
         })
         defer { subscription.cancel() }
@@ -233,10 +231,10 @@ final class SelectableTranscriptionTests: XCTestCase {
     func testSelectionChangesOnNextStartAndOldPublishersAreIsolated() async throws {
         let first = FakeSelectableTranscriber()
         let second = FakeSelectableTranscriber()
-        let selection = Mutex<any TranscriptionCoordinator>(first)
+        let selection = Mutex<any SpeechSessionSource>(first)
         let router = makeSelectableCoordinator(permissionCoordinator: first) { selection.withLock { $0 } }
         let received = Mutex<[String]>([])
-        let finals = router.finalResultPublisher.sink(receiveCompletion: { _ in }, receiveValue: { value in
+        let finals = router.observeFinals({ value in
             received.withLock { $0.append(value.text) }
         })
         defer { finals.cancel() }
@@ -279,16 +277,15 @@ final class SelectableTranscriptionTests: XCTestCase {
     func testBackendFailureDoesNotTerminateSubsequentRecordings() async throws {
         let first = FakeSelectableTranscriber()
         let second = FakeSelectableTranscriber()
-        let selection = Mutex<any TranscriptionCoordinator>(first)
+        let selection = Mutex<any SpeechSessionSource>(first)
         let router = makeSelectableCoordinator(permissionCoordinator: first) { selection.withLock { $0 } }
         let seen = Mutex<[String]>([])
-        let subscriber = router.liveResultPublisher.sink(receiveCompletion: { _ in XCTFail("Shared stream must remain usable") },
-                                                        receiveValue: { value in seen.withLock { $0.append(value.text) } })
+        let subscriber = router.observePartials({ value in seen.withLock { $0.append(value.text) } })
         defer { subscriber.cancel() }
         try await router.start(language: .current)
         first.fail()
-        await assertEventually { router.audioCaptureService.state == .error("语音识别失败，请重试。") }
-        XCTAssertEqual(router.audioCaptureService.state, .error("语音识别失败，请重试。"))
+        await assertEventually { router.captureState == .error("语音识别失败，请重试。") }
+        XCTAssertEqual(router.captureState, .error("语音识别失败，请重试。"))
         await router.stop()
         selection.withLock { $0 = second }
         try await router.start(language: .current)
@@ -299,44 +296,37 @@ final class SelectableTranscriptionTests: XCTestCase {
     }
 }
 
-// Combine publisher 测试桥接；可变运行状态使用 Mutex。
-private final class FakeSelectableTranscriber: TranscriptionCoordinator, AudioCaptureService,
-    SpeechRecognitionService, @unchecked Sendable {
+private final class FakeSelectableTranscriber: SpeechSessionSource, SpeechSession {
     private let running = Mutex(false)
     let startCount = Mutex(0)
     let stopCount = Mutex(0)
-    private let live = PassthroughSubject<TranscriptionResult, Error>()
-    private let final = PassthroughSubject<TranscriptionResult, Error>()
-    var audioCaptureService: any AudioCaptureService { self }
-    var speechRecognitionService: any SpeechRecognitionService { self }
-    var liveResultPublisher: AnyPublisher<TranscriptionResult, Error> { live.eraseToAnyPublisher() }
-    var finalResultPublisher: AnyPublisher<TranscriptionResult, Error> { final.eraseToAnyPublisher() }
-    var audioLevelPublisher: AnyPublisher<Float, Never> { Just(0).eraseToAnyPublisher() }
-    var statePublisher: AnyPublisher<AudioCaptureState, Never> { Just(.idle).eraseToAnyPublisher() }
-    var state: AudioCaptureState { .idle }
-    var isTranscribing: Bool { running.withLock { $0 } }
-    var providerType: ASRProviderType { .custom }
-    var resultPublisher: AnyPublisher<TranscriptionResult, Error> { liveResultPublisher }
+    private let relay = SpeechSessionRelay()
+    private let stream = Mutex<AsyncThrowingStream<TranscriptionEvent, Error>?>(nil)
+    var isActive: Bool { running.withLock { $0 } }
+    var isTranscribing: Bool { isActive }
+    var providerKind: ASRProviderType { .custom }
     var supportedLanguages: [Locale] { [.current] }
-    var hasPermission: Bool { true }
-    func start(language: Locale) async throws {
+    var hasMicrophonePermission: Bool { true }
+    var hasSpeechPermission: Bool { true }
+    func requestMicrophonePermission() async -> Bool { true }
+    func requestSpeechPermission() async -> Bool { true }
+    func captureStates() -> AsyncStream<AudioCaptureState> { AsyncStream { $0.yield(.idle) } }
+    func audioLevels() -> AsyncStream<Float> { AsyncStream { $0.yield(0) } }
+    func startSession(language: Locale) async throws -> any SpeechSession {
+        let opened = relay.open().1
+        stream.withLock { $0 = opened }
         startCount.withLock { $0 += 1 }
         running.withLock { $0 = true }
+        return self
     }
+    func events() -> AsyncThrowingStream<TranscriptionEvent, Error> { stream.withLock { $0! } }
     func stop() async { stopCount.withLock { $0 += 1 }; running.withLock { $0 = false } }
-    func pause() {}
-    func resume() {}
-    func startCapture() async throws {}
-    func stopCapture() async {}
-    func pauseCapture() {}
-    func resumeCapture() {}
-    func requestPermission() async -> Bool { true }
-    func startRecognition(language: Locale) async throws {}
-    func stopRecognition() async {}
-    func checkAvailability() async -> Bool { true }
-    func sendLive(_ text: String) { live.send(.init(text: text, type: .partial, locale: .current)) }
-    func sendFinal(_ text: String) { final.send(.init(text: text, type: .final, locale: .current)) }
-    func fail() { live.send(completion: .failure(RealtimeTranscriptionError.connectionFailed)) }
+    func cancel() async { await stop(); relay.finish() }
+    func pause() async {}
+    func resume() async {}
+    func sendLive(_ text: String) { relay.send(.partial(.init(text: text, type: .partial, locale: .current))) }
+    func sendFinal(_ text: String) { relay.send(.final(.init(text: text, type: .final, locale: .current))) }
+    func fail() { relay.finish(throwing: RealtimeTranscriptionError.connectionFailed) }
 }
 
 private actor FakeSelectionGate {

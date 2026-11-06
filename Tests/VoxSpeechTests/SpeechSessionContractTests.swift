@@ -2,7 +2,7 @@ import Foundation
 import Synchronization
 import VoxCore
 import XCTest
-@testable import TranscriptionKit
+@testable import VoxSpeech
 #if os(iOS)
 import AVFoundation
 #endif
