@@ -11,7 +11,7 @@ VoxKit is a Swift 6.2 voice SDK for macOS and iOS. It ships seven products: `Vox
 
 ```swift
 import VoxWorkflow
-let workflow = Preset.quickTranscription
+let workflow = Preset.default.refine
 ```
 
 See `ai/README.md` and `ai/EXAMPLES.md` for integration patterns.
