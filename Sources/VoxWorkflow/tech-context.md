@@ -1,10 +1,10 @@
 ---
 layer: VoxWorkflow
-owns: ["Sources/VoxWorkflow/**", "Tests/VoxWorkflowTests/**", "Tests/CanaryTests/**", "Tests/GoldenTraceTests/**"]
+owns: ["Sources/VoxWorkflow/**", "Tests/VoxWorkflowTests/**", "Tests/GoldenTraceTests/**"]
 depends_on: ['VoxCore', 'VoxLLM', 'VoxRefine', 'VoxSpeech']
 gate:
   build: swift build --target VoxWorkflow
-  test: swift test --filter VoxWorkflowTests|CanaryTests|GoldenTraceTests
+  test: swift test --filter VoxWorkflowTests|GoldenTraceTests
 ---
 
 # VoxWorkflow

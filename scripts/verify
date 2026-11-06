@@ -3,12 +3,44 @@ set -euo pipefail
 root="$(git rev-parse --show-toplevel)"; cd "$root"
 pin=838e10a059979e6732446cb26edc95d173cc7e3a
 shared_ci="${SHARED_CI:-$root/.shared-ci}"
-if [ ! -d "$shared_ci/.git" ]; then
-  mkdir -p "$shared_ci"; git -C "$shared_ci" init -q
-  git -C "$shared_ci" fetch -q --depth=1 https://github.com/LeePepe/shared-ci.git "$pin"
-  git -C "$shared_ci" checkout -q --detach FETCH_HEAD
+provider_git() (
+  for name in $(git rev-parse --local-env-vars); do unset "$name"; done
+  git -C "$shared_ci" "$@"
+)
+shared_ci="$(python3 -I -B -c '
+import os
+import pathlib
+import sys
+path = pathlib.Path(os.path.abspath(sys.argv[1]))
+if path.is_symlink():
+    raise SystemExit("provider path must not traverse a symlink")
+print(path.parent.resolve() / path.name)
+' "$shared_ci")"
+if [ ! -e "$shared_ci" ]; then
+  if [ -n "${SHARED_CI:-}" ]; then
+    echo "[verify] supplied SHARED_CI must already exist at the declared pin" >&2; exit 1
+  fi
+  mkdir "$shared_ci"
+  provider_git init -q
+  provider_git fetch -q --depth=1 https://github.com/LeePepe/shared-ci.git "$pin"
+  provider_git checkout -q --detach FETCH_HEAD
 fi
-[ "$(git -C "$shared_ci" rev-parse HEAD)" = "$pin" ] || { echo "[verify] shared-ci pin mismatch" >&2; exit 1; }
+if [ ! -d "$shared_ci" ] ||
+   [ "$(provider_git rev-parse --show-toplevel 2>/dev/null || true)" != "$shared_ci" ] ||
+   [ "$(provider_git rev-parse HEAD 2>/dev/null || true)" != "$pin" ]; then
+  echo "[verify] preserve existing provider path; require a checkout at the declared pin" >&2; exit 1
+fi
+provider_git ls-files -v -z | python3 -I -B -c '
+import sys
+if any(not row.startswith(b"H ") for row in sys.stdin.buffer.read().split(b"\0") if row):
+    raise SystemExit("[verify] preserve provider index flags; require an ordinary clean checkout")
+'
+status="$(provider_git status --porcelain --untracked-files=all --ignored)" || {
+  echo "[verify] cannot inspect provider checkout; refusing to execute it" >&2; exit 1
+}
+if [ -n "$status" ]; then
+  echo "[verify] preserve dirty provider checkout; supply a separate clean pinned checkout" >&2; exit 1
+fi
 context() { python3 -I -B "$shared_ci/scripts/context/_context.py" "$@"; }
 policy() {
   context audit

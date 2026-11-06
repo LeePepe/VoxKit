@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic VoxKit red-line scanner and fixture harness."""
 from __future__ import annotations
-import argparse, json, platform, re, subprocess, sys, tempfile
+import argparse, json, platform, re, shutil, subprocess, sys, tempfile
 from pathlib import Path
 
 R1_PATTERNS = [
@@ -204,35 +204,58 @@ def validate_dependencies(graph: dict) -> None:
 
 
 def check_minimal_consumer(root: Path) -> bool:
-    consumer = root / "Examples/MinimalConsumer"
-    build = subprocess.run(["swift", "build", "--package-path", str(consumer)], capture_output=True, text=True)
-    if build.returncode != 0:
-        print("consumer build:\n" + build.stderr); return False
-    bin_path = Path(subprocess.check_output(["swift", "build", "--package-path", str(consumer), "--show-bin-path"], text=True).strip())
-    binary = bin_path / "MinimalConsumer"
-    symbols = subprocess.run(["xcrun", "nm", str(binary)], capture_output=True, text=True)
-    # VoxWorkflow owns the stable `speech.whisperkit.local` node identifier,
-    # while the optional implementation lives in VoxWorkflowWhisperKit. Only
-    # reject linked implementation modules/symbols, not that identifier.
-    if symbols.returncode != 0 or re.search(r"VoxWorkflowWhisperKit|ArgmaxCore|WhisperKit\.WhisperKit", symbols.stdout):
-        print("consumer symbols: WhisperKit or unreadable"); return False
-    modules = list(bin_path.rglob("*WhisperKit*.swiftmodule"))
-    if modules:
-        print("consumer: WhisperKit modules"); return False
-    with tempfile.TemporaryDirectory(prefix="voxkit-consumer-ios-") as temporary:
-        sdk = subprocess.check_output(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], text=True).strip()
-        target = f"{platform.machine()}-apple-ios26.0-simulator"
-        command = ["swift", "build", "--package-path", str(consumer), "--build-system", "native",
-                   "--scratch-path", temporary, "--triple", target, "--sdk", sdk, "--target", "MinimalConsumer"]
-        build = subprocess.run(command, capture_output=True, text=True)
-        if build.returncode != 0:
-            print("iOS consumer build:\n" + build.stdout + build.stderr); return False
-        ios_modules = Path(temporary) / target.replace("26.0", "") / "debug/Modules"
-        for module in ("VoxCore", "VoxSpeech", "VoxRefine", "VoxLLM", "MinimalConsumer"):
-            if not (ios_modules / f"{module}.swiftmodule").exists():
-                print(f"iOS consumer missing: {module}"); return False
-        if list(Path(temporary).rglob("*WhisperKit*.swiftmodule")):
-            print("iOS consumer: WhisperKit modules"); return False
+    with tempfile.TemporaryDirectory(prefix="voxkit-consumer-") as temporary:
+        temporary_root = Path(temporary)
+        if root.name.lower() != "voxkit":
+            alias_parent = temporary_root / "alias"
+            alias_parent.mkdir()
+            alias_root = alias_parent / "VoxKit"
+            alias_root.symlink_to(root)
+            # SwiftPM resolves symlinks before deriving a local package identity. Keep
+            # the required alias for worktree discovery, then materialize the same
+            # checkout under the canonical name for the identity-sensitive build.
+            build_root = temporary_root / "VoxKit"
+            shutil.copytree(root, build_root, symlinks=True,
+                            ignore=shutil.ignore_patterns(".git", ".build"))
+        else:
+            build_root = root
+        consumer = build_root / "Examples/MinimalConsumer"
+        with tempfile.TemporaryDirectory(prefix="voxkit-consumer-macos-build-") as macos_scratch:
+            build = subprocess.run(
+                ["swift", "build", "--package-path", str(consumer), "--scratch-path", macos_scratch],
+                capture_output=True, text=True,
+            )
+            if build.returncode != 0:
+                print("consumer build:\n" + build.stdout + build.stderr); return False
+            bin_path = Path(subprocess.check_output(
+                ["swift", "build", "--package-path", str(consumer), "--scratch-path", macos_scratch, "--show-bin-path"],
+                text=True,
+            ).strip())
+            binary = bin_path / "MinimalConsumer"
+            symbols = subprocess.run(["xcrun", "nm", str(binary)], capture_output=True, text=True)
+            # VoxWorkflow owns the stable `speech.whisperkit.local` node identifier,
+            # while the optional implementation lives in VoxWorkflowWhisperKit. Only
+            # reject linked implementation modules/symbols, not that identifier.
+            if symbols.returncode != 0 or re.search(r"VoxWorkflowWhisperKit|ArgmaxCore|WhisperKit\.WhisperKit", symbols.stdout):
+                print("consumer symbols: WhisperKit or unreadable"); return False
+            modules = list(Path(macos_scratch).rglob("*WhisperKit*.swiftmodule"))
+            if modules:
+                print("consumer: WhisperKit modules"); return False
+
+        with tempfile.TemporaryDirectory(prefix="voxkit-consumer-ios-") as ios_scratch:
+            sdk = subprocess.check_output(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], text=True).strip()
+            target = f"{platform.machine()}-apple-ios26.0-simulator"
+            command = ["swift", "build", "--package-path", str(consumer), "--build-system", "native",
+                       "--scratch-path", ios_scratch, "--triple", target, "--sdk", sdk, "--target", "MinimalConsumer"]
+            build = subprocess.run(command, capture_output=True, text=True)
+            if build.returncode != 0:
+                print("iOS consumer build:\n" + build.stdout + build.stderr); return False
+            ios_modules = Path(ios_scratch) / target.replace("26.0", "") / "debug/Modules"
+            for module in ("VoxCore", "VoxSpeech", "VoxRefine", "VoxLLM", "MinimalConsumer"):
+                if not (ios_modules / f"{module}.swiftmodule").exists():
+                    print(f"iOS consumer missing: {module}"); return False
+            if list(Path(ios_scratch).rglob("*WhisperKit*.swiftmodule")):
+                print("iOS consumer: WhisperKit modules"); return False
     print("consumer: PASS macOS/iOS, no WhisperKit")
     return True
 

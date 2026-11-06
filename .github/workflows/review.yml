@@ -1,10 +1,18 @@
 name: review
+
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, edited]
+    branches: [main]
+
 permissions:
   contents: read
   pull-requests: write
+
+concurrency:
+  group: review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   codex-review-target:
     uses: LeePepe/shared-ci/.github/workflows/codex-review.yml@838e10a059979e6732446cb26edc95d173cc7e3a
@@ -13,5 +21,28 @@ jobs:
       codex-launcher: python3 scripts/ci/review-raven.py
       codex-bin: /opt/homebrew/bin/codex
       owner-user-id: "13819054"
-  kimi-review-target:
+
+  codex-review-gate:
+    if: ${{ always() }}
+    needs: [codex-review-target]
+    runs-on: ubuntu-latest
+    permissions: {}
+    timeout-minutes: 2
+    steps:
+      - name: Require completed Codex review
+        shell: sh
+        env:
+          CODEX_RESULT: ${{ needs.codex-review-target.result }}
+        run: |
+          case "${CODEX_RESULT:-}" in
+            success)
+              echo "Codex review completed successfully."
+              ;;
+            *)
+              echo "::error::Codex review must complete with success; skipped, failed, cancelled or unavailable review cannot pass."
+              exit 1
+              ;;
+          esac
+
+  kimi-review:
     uses: LeePepe/shared-ci/.github/workflows/kimi-review.yml@838e10a059979e6732446cb26edc95d173cc7e3a
