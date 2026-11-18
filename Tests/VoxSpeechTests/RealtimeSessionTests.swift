@@ -11,6 +11,7 @@ actor FakeRealtimeTransport: RealtimeTranscriptionTransport {
     private let acknowledge: Bool
     private let completeOnCommit: Bool
     private(set) var sent: [String] = []
+    private(set) var sentPayloads: [Data] = []
 
     init(acknowledge: Bool = true, completeOnCommit: Bool = true) {
         self.acknowledge = acknowledge
@@ -18,6 +19,7 @@ actor FakeRealtimeTransport: RealtimeTranscriptionTransport {
     }
     func connect(request: URLRequest) async throws {}
     func send(_ data: Data) async throws {
+        sentPayloads.append(data)
         let object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         let type = object["type"] as! String
         sent.append(type)
@@ -52,6 +54,30 @@ actor FakeRealtimeTransport: RealtimeTranscriptionTransport {
 final class RealtimeSessionTests: XCTestCase {
     private func config() throws -> AzureRealtimeTranscriptionConfig {
         try .init(endpoint: URL(string: "https://example.invalid")!, apiKey: Credential(rawValue: "synthetic-key"), deployment: "live")
+    }
+
+    func testSessionUpdateOmitsUnsupportedDelayForMAIAndGPTCompatibility() async throws {
+        let socket = FakeRealtimeTransport()
+        let sessionConfig = try AzureRealtimeTranscriptionConfig(
+            endpoint: URL(string: "https://example.invalid")!,
+            apiKey: Credential(rawValue: "synthetic-key"),
+            deployment: "example-mai-transcribe-2"
+        )
+        let session = DefaultRealtimeTranscriptionSession(config: sessionConfig, transport: socket, onPartial: { _ in })
+        try await session.open(language: "zh-Hans")
+
+        let payloads = await socket.sentPayloads
+        let updatePayload = try XCTUnwrap(payloads.first)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: updatePayload) as? [String: Any])
+        XCTAssertEqual(object["type"] as? String, "session.update")
+        let sessionDict = try XCTUnwrap(object["session"] as? [String: Any])
+        let audioDict = try XCTUnwrap(sessionDict["audio"] as? [String: Any])
+        let inputDict = try XCTUnwrap(audioDict["input"] as? [String: Any])
+        let transcriptionDict = try XCTUnwrap(inputDict["transcription"] as? [String: Any])
+        XCTAssertEqual(Set(transcriptionDict.keys), ["model", "language"])
+        XCTAssertEqual(transcriptionDict["model"] as? String, "example-mai-transcribe-2")
+        XCTAssertEqual(transcriptionDict["language"] as? String, "zh-Hans")
+        XCTAssertNil(transcriptionDict["delay"])
     }
 
     func testPartialArrivesBeforeFinishAndFinishCommitsOnce() async throws {
