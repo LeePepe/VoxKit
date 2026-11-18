@@ -40,7 +40,7 @@ actor DefaultRealtimeTranscriptionSession {
                 "session": ["type": "transcription", "audio": ["input": [
                     "format": ["type": "audio/pcm", "rate": 24000],
                     "turn_detection": NSNull(),
-                    "transcription": ["model": config.deployment, "language": language, "delay": "medium"]
+                    "transcription": ["model": config.deployment, "language": language]
                 ]]]
             ])
             try await waitUntilReady()
